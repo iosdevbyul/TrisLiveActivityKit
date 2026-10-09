@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    tags: ['*']
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Select available iPhone simulator
+        id: simulator
+        shell: bash
+        run: |
+          DEVICE_ID=$(xcrun simctl list -j devices available | python3 -c 'import json,sys; data=json.load(sys.stdin)["devices"]; devices=[d for group in data.values() for d in group if d.get("name","").startswith("iPhone") and d.get("state") != "Unavailable"]; print(devices[0]["udid"] if devices else "")')
+          test -n "$DEVICE_ID" || { echo "No available iPhone simulator"; exit 1; }
+          echo "id=$DEVICE_ID" >> "$GITHUB_OUTPUT"
+      - name: Build and test
+        run: |
+          xcodebuild test \
+            -scheme TrisLiveActivityKit \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.id }}" \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO
